@@ -2,7 +2,7 @@
 <html lang="pl">
 <head>
   <meta charset="UTF-8">
-  <title>Gra kartonowny kierownik</title>
+  <title>Gra Biurowa</title>
   <style>
     /* Zmienne kolorów, których skrypt szuka */
     :root {
@@ -45,7 +45,13 @@
 
     <!-- Ekrany menu -->
     <div id="govl">
-      <h2>Gotowy?</h2>
+      <h2>Kartonowy kierownik</h2>
+<div style="font-size:14px;color:var(--kimi-color-text-secondary);max-width:380px;line-height:1.5;margin-bottom:20px;">
+      Zwalniaj programistów rzucając kartonem z niezgrabnym uśmiechem.<br>
+      <span style="color:var(--kimi-color-positive);">Skyr odchudza</span> · <span style="color:var(--kimi-color-danger);">Czekolada tyje</span><br>
+      Uważaj — programiści potrafią uciekać!<br><br>
+      <strong style="color:var(--kimi-color-danger);">FINAL BOSS: Krystian nie odda RDP!</strong>
+    </div>
       <button id="gstart">Start</button>
     </div>
     
@@ -63,6 +69,9 @@
       <button id="gwinrestart">Zagraj ponownie</button>
     </div>
   </div>
+
+
+
 <script>
 (function(){
   const wrap = document.getElementById('gwrap');
