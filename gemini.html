@@ -1,1 +1,515 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>Aluplast: Interwencja PIP</title>
+    <style>
+        body {
+            margin: 0; padding: 0; background-color: #000; color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden; user-select: none;
+        }
+        canvas { display: block; }
+        #ui {
+            position: absolute; top: 10px; left: 10px;
+            font-size: 20px; font-weight: bold; text-shadow: 2px 2px 0 #000; z-index: 5;
+            color: #f1c40f;
+        }
+        #message-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            background-color: rgba(0,0,0,0.95); z-index: 10;
+        }
+        h1 { color: #ff3333; text-transform: uppercase; letter-spacing: 3px; text-align: center; text-shadow: 0 0 10px red;}
+        p { max-width: 600px; text-align: center; line-height: 1.5; font-size: 18px; }
+        button {
+            margin-top: 30px; padding: 15px 30px;
+            font-size: 20px; background-color: #600; color: #fff;
+            border: 2px solid #f00; cursor: pointer;
+            font-family: inherit; font-weight: bold; transition: 0.2s;
+        }
+        button:hover { background-color: #900; box-shadow: 0 0 15px red; }
+    </style>
+</head>
+<body>
 
+    <div id="ui">CEL: Znajdź zaproszenie na szkolenie antymobbingowe!</div>
+
+    <div id="message-screen">
+        <h1 id="title">ALUPLAST: INTERWENCJA PIP</h1>
+        <p id="desc">
+            Prąd wysiadł. Gdzieś w hali magazynowej leży <b>Zaproszenie na Szkolenie Antymobbingowe</b>.<br><br>
+            Znajdź tę czerwoną kopertę, zanim dorwie Cię potężny Kierownik z wypowiedzeniem w dłoni.<br><br>
+            <b>Sterowanie:</b> WSAD / Strzałki.<br>
+            <i>Wskazówka: Z czasem kierownik staje się coraz szybszy. Używaj regałów jako osłony!</i>
+        </p>
+        <button id="start-btn">ZACZNIJ ZMIANĘ</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const ui = document.getElementById('ui');
+    const msgScreen = document.getElementById('message-screen');
+    const titleUI = document.getElementById('title');
+    const descUI = document.getElementById('desc');
+    const startBtn = document.getElementById('start-btn');
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    window.addEventListener('resize', () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    });
+
+    const WORLD_SIZE = 3000;
+    
+    let gameState = 'START'; // START, PLAYING, JUMPSCARE, HAPPY_JUMPSCARE, WIN, GAMEOVER
+    let time = 0;
+    
+    let player, manager, artifact, walls;
+    let keys = { w: false, a: false, s: false, d: false, ArrowUp: false, ArrowLeft: false, ArrowDown: false, ArrowRight: false };
+
+    // --- AUDIO ---
+    let audioCtx, droneOsc, droneGain;
+
+    function initAudio() {
+        if (audioCtx) return;
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        droneOsc = audioCtx.createOscillator();
+        droneOsc.type = 'triangle';
+        droneOsc.frequency.value = 55;
+        droneGain = audioCtx.createGain();
+        droneGain.gain.value = 0.3;
+        droneOsc.connect(droneGain);
+        droneGain.connect(audioCtx.destination);
+        droneOsc.start();
+    }
+
+    // Klasyczny straszny jumpscare
+    function playJumpscareSound() {
+        if (!audioCtx) return;
+        droneGain.gain.setValueAtTime(0, audioCtx.currentTime);
+
+        const bufferSize = audioCtx.sampleRate * 2;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = (Math.random() * 2 - 1) * Math.sin(i * 0.01);
+        }
+        
+        let source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        const gainNode = audioCtx.createGain();
+        gainNode.gain.setValueAtTime(3, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1.5);
+        
+        source.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        source.start();
+    }
+
+    // Pozytywny jumpscare (Triumfalny akord + policyjna syrena)
+    function playHappyJumpscareSound() {
+        if (!audioCtx) return;
+        droneGain.gain.setValueAtTime(0, audioCtx.currentTime);
+
+        // Akord C-dur
+        const freqs = [523.25, 659.25, 783.99]; 
+        freqs.forEach(freq => {
+            let osc = audioCtx.createOscillator();
+            osc.type = 'square';
+            osc.frequency.value = freq;
+            let gain = audioCtx.createGain();
+            gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 2);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 2);
+        });
+
+        // Syrena
+        let siren = audioCtx.createOscillator();
+        siren.type = 'sawtooth';
+        siren.frequency.setValueAtTime(800, audioCtx.currentTime);
+        siren.frequency.linearRampToValueAtTime(1200, audioCtx.currentTime + 0.5);
+        siren.frequency.linearRampToValueAtTime(800, audioCtx.currentTime + 1);
+        siren.frequency.linearRampToValueAtTime(1200, audioCtx.currentTime + 1.5);
+        let sirenGain = audioCtx.createGain();
+        sirenGain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        siren.connect(sirenGain);
+        sirenGain.connect(audioCtx.destination);
+        siren.start();
+        siren.stop(audioCtx.currentTime + 2);
+    }
+
+    // --- STEROWANIE ---
+    window.addEventListener('keydown', (e) => { if(keys.hasOwnProperty(e.key)) keys[e.key] = true; });
+    window.addEventListener('keyup', (e) => { if(keys.hasOwnProperty(e.key)) keys[e.key] = false; });
+
+    function initGame() {
+        initAudio();
+        time = 0;
+        
+        player = {
+            x: WORLD_SIZE / 2, y: WORLD_SIZE / 2,
+            radius: 12, speed: 3.5,
+            color: '#7fb3d5'
+        };
+
+        manager = {
+            x: 200, y: 200,
+            width: 45, height: 45,
+            baseSpeed: 2.1, 
+            speed: 2.1
+        };
+
+        walls = [];
+        let buffer = 200; 
+        for (let i = 0; i < 70; i++) {
+            let wx = Math.random() * WORLD_SIZE;
+            let wy = Math.random() * WORLD_SIZE;
+            let ww = Math.random() > 0.5 ? 200 + Math.random() * 300 : 50;
+            let wh = Math.random() > 0.5 ? 50 : 200 + Math.random() * 300;
+
+            let overlapsPlayer = (wx < player.x + buffer && wx + ww > player.x - buffer && wy < player.y + buffer && wy + wh > player.y - buffer);
+            let overlapsManager = (wx < manager.x + buffer && wx + ww > manager.x - buffer && wy < manager.y + buffer && wy + wh > manager.y - buffer);
+
+            if (!overlapsPlayer && !overlapsManager) {
+                walls.push({ x: wx, y: wy, w: ww, h: wh });
+            } else {
+                i--; 
+            }
+        }
+
+        // Generowanie jednego artefaktu
+        artifact = { x: 0, y: 0, collected: false };
+        let artifactPlaced = false;
+        while(!artifactPlaced) {
+            let tx = Math.random() * (WORLD_SIZE - 200) + 100;
+            let ty = Math.random() * (WORLD_SIZE - 200) + 100;
+            let inWall = walls.some(w => tx > w.x - 30 && tx < w.x + w.w + 30 && ty > w.y - 30 && ty < w.y + w.h + 30);
+            
+            // Żeby nie zrespiło się za blisko gracza na starcie
+            let farEnough = Math.hypot(tx - player.x, ty - player.y) > 1000;
+            
+            if (!inWall && farEnough) {
+                artifact.x = tx;
+                artifact.y = ty;
+                artifactPlaced = true;
+            }
+        }
+
+        gameState = 'PLAYING';
+        msgScreen.style.display = 'none';
+        requestAnimationFrame(gameLoop);
+    }
+
+    startBtn.addEventListener('click', initGame);
+
+    function checkWallCollision(newX, newY, radius) {
+        for (let wall of walls) {
+            let testX = newX; let testY = newY;
+            if (newX < wall.x) testX = wall.x; else if (newX > wall.x + wall.w) testX = wall.x + wall.w;
+            if (newY < wall.y) testY = wall.y; else if (newY > wall.y + wall.h) testY = wall.y + wall.h;
+            let dist = Math.hypot(newX - testX, newY - testY);
+            if (dist <= radius) return true;
+        }
+        return false;
+    }
+
+    function checkRectCollision(nx, ny, w, h) {
+        let left = nx - w/2; let right = nx + w/2;
+        let top = ny - h/2; let bottom = ny + h/2;
+        for (let wall of walls) {
+            if (left < wall.x + wall.w && right > wall.x && top < wall.y + wall.h && bottom > wall.y) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function triggerBadJumpscare() {
+        gameState = 'JUMPSCARE';
+        playJumpscareSound();
+        setTimeout(() => { endGame(false); }, 1500);
+    }
+
+    function triggerHappyJumpscare() {
+        gameState = 'HAPPY_JUMPSCARE';
+        playHappyJumpscareSound();
+        setTimeout(() => { endGame(true); }, 2000); // 2 sekundy radości
+    }
+
+    function update() {
+        if (gameState !== 'PLAYING') return;
+        time++;
+
+        // Kierownik z czasem staje się powolutku coraz szybszy
+        manager.speed = manager.baseSpeed + (time * 0.0003);
+
+        // Ruch Gracza
+        let dx = 0; let dy = 0;
+        if (keys.w || keys.ArrowUp) dy -= player.speed;
+        if (keys.s || keys.ArrowDown) dy += player.speed;
+        if (keys.a || keys.ArrowLeft) dx -= player.speed;
+        if (keys.d || keys.ArrowRight) dx += player.speed;
+
+        if (dx !== 0 && dy !== 0) {
+            let length = Math.hypot(dx, dy);
+            dx = (dx/length) * player.speed; dy = (dy/length) * player.speed;
+        }
+
+        if (!checkWallCollision(player.x + dx, player.y, player.radius)) player.x += dx;
+        if (!checkWallCollision(player.x, player.y + dy, player.radius)) player.y += dy;
+
+        player.x = Math.max(player.radius, Math.min(WORLD_SIZE - player.radius, player.x));
+        player.y = Math.max(player.radius, Math.min(WORLD_SIZE - player.radius, player.y));
+
+        // Zbieranie Artefaktu
+        if (!artifact.collected && Math.hypot(player.x - artifact.x, player.y - artifact.y) < player.radius + 20) {
+            artifact.collected = true;
+            triggerHappyJumpscare();
+        }
+
+        // Ruch Kierownika
+        let mdx = player.x - manager.x;
+        let mdy = player.y - manager.y;
+        let distToManager = Math.hypot(mdx, mdy);
+        
+        if (distToManager > 0) {
+            let stepX = (mdx / distToManager) * manager.speed;
+            let stepY = (mdy / distToManager) * manager.speed;
+            
+            let canMoveX = !checkRectCollision(manager.x + stepX, manager.y, manager.width, manager.height);
+            let canMoveY = !checkRectCollision(manager.x, manager.y + stepY, manager.width, manager.height);
+            
+            if (canMoveX) manager.x += stepX;
+            if (canMoveY) manager.y += stepY;
+            
+            if (!canMoveX && !canMoveY) {
+                manager.x += stepX * 0.2;
+                manager.y += stepY * 0.2;
+            } else if (!canMoveX) {
+                manager.x += stepX * 0.2; 
+            } else if (!canMoveY) {
+                manager.y += stepY * 0.2;
+            }
+        }
+
+        if (distToManager < player.radius + manager.width/2) {
+            triggerBadJumpscare();
+        }
+    }
+
+    function drawBadJumpscare() {
+        ctx.fillStyle = (Math.floor(time / 5) % 2 === 0) ? '#000' : '#300';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        let centerX = canvas.width / 2;
+        let centerY = canvas.height / 2;
+        
+        ctx.save();
+        ctx.translate((Math.random() - 0.5) * 15, (Math.random() - 0.5) * 15);
+
+        ctx.fillStyle = '#100';
+        ctx.fillRect(centerX - 150, centerY - 250, 300, 500);
+
+        ctx.fillStyle = '#f00';
+        ctx.shadowColor = '#f00'; ctx.shadowBlur = 30;
+        ctx.beginPath(); ctx.arc(centerX - 60, centerY - 150, 20, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(centerX + 60, centerY - 150, 20, 0, Math.PI*2); ctx.fill();
+        ctx.shadowBlur = 0;
+
+        let boxWidth = 250; let boxHeight = 180;
+        ctx.fillStyle = '#d7c0ae'; 
+        ctx.fillRect(centerX - boxWidth/2, centerY - 20, boxWidth, boxHeight);
+        
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.arc(centerX, centerY + 60, 60, 0.2, Math.PI-0.2); ctx.stroke();
+
+        ctx.restore();
+    }
+
+    function drawHappyJumpscare() {
+        // Mruganie policyjne niebiesko-czerwone
+        let colorSwitch = Math.floor(time / 10) % 2;
+        ctx.fillStyle = colorSwitch === 0 ? 'rgba(0, 0, 255, 0.8)' : 'rgba(255, 0, 0, 0.8)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        let cx = canvas.width / 2;
+        let cy = canvas.height / 2;
+
+        ctx.save();
+        ctx.translate((Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10);
+
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 80px "Courier New"';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 20;
+        ctx.fillText("PIP WKRACZA DO AKCJI!", cx, cy - 40);
+
+        ctx.fillStyle = '#ffff00';
+        ctx.font = 'bold 30px "Courier New"';
+        ctx.fillText("Kierownik mdleje! Wygrywasz!", cx, cy + 40);
+
+        ctx.restore();
+    }
+
+    function draw() {
+        if (gameState === 'JUMPSCARE') {
+            drawBadJumpscare();
+            return; 
+        } else if (gameState === 'HAPPY_JUMPSCARE') {
+            drawHappyJumpscare();
+            return;
+        }
+
+        ctx.fillStyle = '#050505';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        let distToManager = Math.hypot(player.x - manager.x, player.y - manager.y);
+        const dangerZone = 500; 
+
+        let shakeX = 0;
+        let shakeY = 0;
+        let fearIntensity = 0;
+
+        if (distToManager < dangerZone) {
+            fearIntensity = (dangerZone - distToManager) / dangerZone;
+            shakeX = (Math.random() - 0.5) * 20 * fearIntensity;
+            shakeY = (Math.random() - 0.5) * 20 * fearIntensity;
+        }
+
+        ctx.save();
+        let camX = player.x - canvas.width / 2 + shakeX;
+        let camY = player.y - canvas.height / 2 + shakeY;
+        ctx.translate(-camX, -camY);
+
+        ctx.fillStyle = '#0a0a0a';
+        ctx.fillRect(0, 0, WORLD_SIZE, WORLD_SIZE);
+        
+        ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
+        for(let i=0; i<WORLD_SIZE; i+=100) {
+            ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, WORLD_SIZE); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(WORLD_SIZE, i); ctx.stroke();
+        }
+
+        ctx.fillStyle = '#1c2833'; 
+        for (let wall of walls) {
+            ctx.fillRect(wall.x, wall.y, wall.w, wall.h);
+            ctx.strokeStyle = '#000'; ctx.strokeRect(wall.x, wall.y, wall.w, wall.h);
+        }
+
+        // Rysowanie koperty (zaproszenia)
+        if (!artifact.collected) {
+            let ax = artifact.x; let ay = artifact.y;
+            
+            // Poświata
+            let pulse = Math.abs(Math.sin(time * 0.1)) * 10;
+            ctx.shadowColor = '#e74c3c';
+            ctx.shadowBlur = 15 + pulse;
+            
+            // Koperta
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(ax - 15, ay - 10, 30, 20);
+            
+            ctx.strokeStyle = '#e74c3c';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(ax - 15, ay - 10);
+            ctx.lineTo(ax, ay + 2);
+            ctx.lineTo(ax + 15, ay - 10);
+            ctx.stroke();
+
+            ctx.shadowBlur = 0; // reset
+        }
+
+        ctx.fillStyle = player.color;
+        ctx.beginPath(); ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2); ctx.fill();
+
+        ctx.fillStyle = '#4a0000'; 
+        ctx.fillRect(manager.x - manager.width/2, manager.y - manager.height/2, manager.width, manager.height);
+        
+        ctx.fillStyle = '#ff0000';
+        ctx.beginPath(); ctx.arc(manager.x - 8, manager.y - 10, 3, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(manager.x + 8, manager.y - 10, 3, 0, Math.PI*2); ctx.fill();
+
+        ctx.fillStyle = '#c8b09b';
+        ctx.fillRect(manager.x - 12, manager.y + 5, 24, 18);
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(manager.x, manager.y + 12, 6, 0.2, Math.PI-0.2); ctx.stroke();
+
+        ctx.restore();
+
+        // Maska latarki pulsująca w rytm kroków
+        const maskCanvas = document.createElement('canvas');
+        maskCanvas.width = canvas.width; maskCanvas.height = canvas.height;
+        const maskCtx = maskCanvas.getContext('2d');
+        
+        maskCtx.fillStyle = 'rgba(0, 0, 0, 0.98)';
+        maskCtx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        let baseRadius = 250 + Math.sin(time * 0.05) * 15;
+        if (Math.random() < 0.03) baseRadius = Math.random() * 80; // Migotanie
+
+        maskCtx.globalCompositeOperation = 'destination-out';
+        let gradient = maskCtx.createRadialGradient(canvas.width/2, canvas.height/2, baseRadius * 0.1, canvas.width/2, canvas.height/2, baseRadius);
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        
+        maskCtx.fillStyle = gradient;
+        maskCtx.beginPath();
+        maskCtx.arc(canvas.width/2, canvas.height/2, baseRadius, 0, Math.PI*2);
+        maskCtx.fill();
+        
+        ctx.drawImage(maskCanvas, 0, 0);
+
+        if (fearIntensity > 0) {
+            let pulse = Math.abs(Math.sin(time * 0.1)) * 0.2;
+            ctx.fillStyle = `rgba(180, 0, 0, ${(fearIntensity * 0.5) + pulse})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.1 * fearIntensity})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+    }
+
+    function gameLoop() {
+        if (gameState === 'PLAYING') {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        } else if (gameState === 'JUMPSCARE' || gameState === 'HAPPY_JUMPSCARE') {
+            time++; 
+            draw(); 
+            requestAnimationFrame(gameLoop);
+        }
+    }
+
+    function endGame(isWin) {
+        gameState = isWin ? 'WIN' : 'GAMEOVER';
+        msgScreen.style.display = 'flex';
+        if(audioCtx) droneGain.gain.setValueAtTime(0, audioCtx.currentTime); 
+        
+        if (isWin) {
+            titleUI.style.color = '#3498db';
+            titleUI.innerText = "PIP ZAMYKA ZAKŁAD!";
+            descUI.innerHTML = "Wysyłasz zaproszenie do zarządu. W asyście kogutów na halę wjeżdża Państwowa Inspekcja Pracy.<br>Kierownik upuszcza wypowiedzenie, blednie i otrzymuje potężny mandat.<br>Jesteś wolny!";
+            startBtn.innerText = "IDŹ NA PŁATNY URLOP";
+        } else {
+            titleUI.style.color = '#e74c3c';
+            titleUI.innerText = "ZOSTAŁEŚ ZWOLNIONY";
+            descUI.innerHTML = "W gęstym mroku hali poczułeś potężną, barczystą dłoń na ramieniu.<br>Kierownik wręczył Ci wypowiedzenie.<br>Tym razem Ci się nie upiekło.";
+            startBtn.innerText = "PONOWNIE ZŁÓŻ CV"; 
+        }
+    }
+</script>
+</body>
+</html>
