@@ -1,1 +1,1211 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ALUPLAST NIGHT SHIFT - RDP Horror</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0a0a0a;
+            color: #ccc;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        #gameContainer {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background: #000;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            image-rendering: pixelated;
+        }
+        #ui {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+        #startScreen, #gameOverScreen, #winScreen, #antiMobbingScreen {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0,0,0,0.95);
+            pointer-events: all;
+            z-index: 20;
+            overflow-y: auto;
+            padding: 20px 0;
+        }
+        #gameOverScreen, #winScreen, #antiMobbingScreen { display: none; }
+        .start-inner {
+            max-width: 700px;
+            width: 90%;
+            text-align: center;
+            padding: 20px;
+        }
+        h1 {
+            color: #8B0000;
+            font-size: clamp(1.8em, 5vw, 3em);
+            text-shadow: 0 0 20px #8B0000;
+            margin-bottom: 10px;
+            letter-spacing: 4px;
+        }
+        h2 {
+            color: #ff3333;
+            font-size: clamp(1.4em, 4vw, 2em);
+            text-shadow: 0 0 10px #ff0000;
+            margin-bottom: 20px;
+        }
+        .subtitle {
+            color: #888;
+            font-size: clamp(0.85em, 2vw, 1.05em);
+            margin-bottom: 25px;
+            text-align: center;
+            line-height: 1.5;
+        }
+        .btn {
+            padding: 12px 35px;
+            font-size: 1.1em;
+            font-family: 'Courier New', monospace;
+            background: #1a1a1a;
+            color: #8B0000;
+            border: 2px solid #8B0000;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            pointer-events: all;
+            margin-top: 10px;
+        }
+        .btn:hover {
+            background: #8B0000;
+            color: #000;
+            box-shadow: 0 0 30px #8B0000;
+        }
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #8B0000;
+            font-size: 1.1em;
+            text-shadow: 0 0 5px #8B0000;
+            display: none;
+        }
+        #hud span { color: #ff6666; }
+        #staticOverlay {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            opacity: 0;
+            z-index: 15;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(255,255,255,0.03) 2px,
+                rgba(255,255,255,0.03) 4px
+            );
+        }
+        #jumpscare, #antiMobbingJumpscare {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            background: #000;
+            z-index: 30;
+            pointer-events: all;
+        }
+        #jumpscareCanvas, #antiMobbingCanvas {
+            width: 100%;
+            height: 100%;
+        }
+        #bossDialogue {
+            position: absolute;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ff0000;
+            font-size: 1.3em;
+            text-shadow: 0 0 10px #ff0000;
+            text-align: center;
+            display: none;
+            z-index: 12;
+            background: rgba(0,0,0,0.7);
+            padding: 10px 20px;
+            border: 1px solid #8B0000;
+        }
+        #rdpBar {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #00ff00;
+            font-size: 0.9em;
+            text-shadow: 0 0 5px #00ff00;
+            display: none;
+            z-index: 12;
+            text-align: right;
+        }
+        #antiMobbingHint {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ff00ff;
+            font-size: 0.9em;
+            text-shadow: 0 0 10px #ff00ff;
+            text-align: center;
+            display: none;
+            z-index: 12;
+        }
+    </style>
+<base target="_blank">
+</head>
+<body>
+<div id="gameContainer">
+    <canvas id="gameCanvas"></canvas>
+    <div id="staticOverlay"></div>
+    <canvas id="noiseCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:14;opacity:0;"></canvas>
 
+    <div id="ui">
+        <div id="hud">
+            <div>INFRASTRUKTURA RDP: <span id="itemsCount">0</span> / <span id="itemsTotal">8</span></div>
+            <div style="margin-top:6px; font-size:0.85em; color:#ff00ff; text-shadow:0 0 5px #ff00ff;">★ LEGENDA: Szkolenie Anty-Mobingowe</div>
+            <div style="margin-top:10px; font-size:0.8em; color:#444;">WASD / STRZAŁKI - ruch | MYSZ - latarka | SPACJA - sprint</div>
+        </div>
+
+        <div id="rdpBar">
+            <div>STATUS RDP: <span style="color:#ff0000">ZAGROŻONY</span></div>
+            <div style="font-size:0.8em; color:#666; margin-top:4px;">Kierownik chce przejąć Twoje połączenie...</div>
+        </div>
+
+        <div id="bossDialogue"></div>
+        <div id="antiMobbingHint">Gdzieś w fabryce ukryto potężne SZKOLENIE ANTY-MOBINGOWE...</div>
+
+        <div id="startScreen">
+            <div class="start-inner">
+                <h1>ALUPLAST NIGHT SHIFT</h1>
+                <div class="subtitle">
+                    Jesteś chuderlawym programistą w fabryce profili okiennych Aluplast.<br><br>
+                    Noc. Ciemność. Siedzisz w kącie i pracujesz przez <b>RDP</b>.<br>
+                    W końcu home office, bez korpo-bullshitu.<br><br>
+                    Ale <b>ON</b> tego nie znosi.<br><br>
+                    W cieniu czai się <b>potężny, umięśniony kierownik</b>.<br>
+                    Trzyma karton z niezgrabnym uśmiechem.<br><br>
+                    <span style="color:#ff4444;">„Oddaj mi dostęp do RDP!"</span><br>
+                    <span style="color:#ff4444;">„W tej firmie pracuje się NA MIEJSCU!"</span><br><br>
+                    Nie chce Cię zabić. Chce Cię <b>ZWOLNIĆ</b>.<br>
+                    I przejąć Twoje RDP.<br><br>
+                    Zbierz <b>8 elementów infrastruktury RDP</b> i ucieknij.<br><br>
+                    <span style="color:#ff00ff;">★ LEGENDA:</span> Gdzieś ukryto <b>Szkolenie Anty-Mobingowe</b>.<br>
+                    Jeśli je znajdziesz — <b>TY</b> zrobisz kierownikowi jumpscare.
+                </div>
+                <button class="btn" onclick="startGame()">ROZPOCZNIJ KOSZMAR</button>
+            </div>
+        </div>
+
+        <div id="gameOverScreen">
+            <h2>ZOSTAŁEŚ ZWOLNIONY</h2>
+            <div class="subtitle" id="deathText"></div>
+            <button class="btn" onclick="location.reload()">SPRÓBUJ PONOWNIE</button>
+        </div>
+
+        <div id="winScreen">
+            <h2 style="color:#0f0; text-shadow:0 0 20px #0f0;">RDP URATOWANE!</h2>
+            <div class="subtitle">
+                Udało Ci się zebrać wszystkie elementy infrastruktury i wymknąć z fabryki.<br>
+                Kierownik został sam z kartonem, swoim uśmiechem<br>
+                i martwym serwerem terminalowym, do którego nie ma hasła.<br><br>
+                <span style="color:#00ff00;">Twój RDP jest bezpieczny. Możesz pracować z domu.</span><br><br>
+                <span style="color:#666;">Ale czy na pewno to koniec...?</span>
+            </div>
+            <button class="btn" onclick="location.reload()" style="border-color:#0f0; color:#0f0;">GRAJ PONOWNIE</button>
+        </div>
+
+        <div id="antiMobbingScreen">
+            <h2 style="color:#ff00ff; text-shadow:0 0 20px #ff00ff;">KIEROWNIK ZWOLNIONY!</h2>
+            <div class="subtitle">
+                Znalazłeś <b>Szkolenie Anty-Mobingowe</b>.<br>
+                Z chuderlawego programisty stałeś się <b>niepokonanym</b>.<br><br>
+                Kierownik próbował uciec, ale <b>TY</b> go dopadłeś.<br>
+                Wręczyłeś mu karton z niezgrabnym uśmiechem.<br><br>
+                <span style="color:#ff00ff;">„Krystian... oddaj RDP'a"</span> — wyszeptał po raz ostatni.<br><br>
+                <span style="color:#00ff00;">Fabryka Aluplast jest teraz Twoja. Home office na zawsze.</span>
+            </div>
+            <button class="btn" onclick="location.reload()" style="border-color:#ff00ff; color:#ff00ff;">GRAJ PONOWNIE</button>
+        </div>
+
+        <div id="jumpscare">
+            <canvas id="jumpscareCanvas"></canvas>
+        </div>
+
+        <div id="antiMobbingJumpscare">
+            <canvas id="antiMobbingCanvas"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+// ==================== AUDIO ENGINE ====================
+const AudioEngine = {
+    ctx: null,
+    lastHeartbeat: 0,
+    init() {
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    },
+    speak(text, rate, pitch) {
+        if (!window.speechSynthesis) return;
+        window.speechSynthesis.cancel();
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.lang = 'pl-PL';
+        utter.rate = rate || 0.8;
+        utter.pitch = pitch || 0.5;
+        utter.volume = 1;
+        const voices = window.speechSynthesis.getVoices();
+        const plVoice = voices.find(v => v.lang.includes('pl'));
+        if (plVoice) utter.voice = plVoice;
+        window.speechSynthesis.speak(utter);
+    },
+    playHeartbeat(intensity, time) {
+        if (!this.ctx) return;
+        const t = this.ctx.currentTime;
+        const gap = Math.max(0.3, 1.2 - intensity * 0.9);
+
+        const osc1 = this.ctx.createOscillator();
+        const gain1 = this.ctx.createGain();
+        osc1.connect(gain1);
+        gain1.connect(this.ctx.destination);
+        osc1.frequency.setValueAtTime(60, t);
+        osc1.frequency.exponentialRampToValueAtTime(35, t + 0.12);
+        gain1.gain.setValueAtTime(intensity * 0.9, t);
+        gain1.gain.exponentialRampToValueAtTime(0.01, t + 0.25);
+        osc1.start(t);
+        osc1.stop(t + 0.25);
+
+        const osc2 = this.ctx.createOscillator();
+        const gain2 = this.ctx.createGain();
+        osc2.connect(gain2);
+        gain2.connect(this.ctx.destination);
+        osc2.frequency.setValueAtTime(50, t + 0.12);
+        osc2.frequency.exponentialRampToValueAtTime(25, t + 0.22);
+        gain2.gain.setValueAtTime(intensity * 0.7, t + 0.12);
+        gain2.gain.exponentialRampToValueAtTime(0.01, t + 0.35);
+        osc2.start(t + 0.12);
+        osc2.stop(t + 0.35);
+
+        return gap;
+    },
+    playStep() {
+        if (!this.ctx) return;
+        const t = this.ctx.currentTime;
+        const noise = this.ctx.createBufferSource();
+        const buffer = this.ctx.createBuffer(1, this.ctx.sampleRate * 0.05, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.3;
+        noise.buffer = buffer;
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 200;
+        const gain = this.ctx.createGain();
+        gain.gain.value = 0.12;
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+        noise.start(t);
+    },
+    playCollect() {
+        if (!this.ctx) return;
+        const t = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(440, t);
+        osc.frequency.exponentialRampToValueAtTime(880, t + 0.1);
+        gain.gain.setValueAtTime(0.2, t);
+        gain.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
+        osc.start(t);
+        osc.stop(t + 0.3);
+    },
+    playAntiMobbingSound() {
+        if (!this.ctx) return;
+        const t = this.ctx.currentTime;
+        for (let i = 0; i < 5; i++) {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(220 * (i+1), t + i*0.15);
+            gain.gain.setValueAtTime(0.15, t + i*0.15);
+            gain.gain.exponentialRampToValueAtTime(0.01, t + i*0.15 + 0.3);
+            osc.start(t + i*0.15);
+            osc.stop(t + i*0.15 + 0.3);
+        }
+    },
+    playJumpscare() {
+        if (!this.ctx) return;
+        const t = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(100, t);
+        osc.frequency.exponentialRampToValueAtTime(20, t + 1);
+        gain.gain.setValueAtTime(0.8, t);
+        gain.gain.exponentialRampToValueAtTime(0.01, t + 2);
+        osc.start(t);
+        osc.stop(t + 2);
+
+        const noise = this.ctx.createBufferSource();
+        const buffer = this.ctx.createBuffer(1, this.ctx.sampleRate * 2, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1);
+        noise.buffer = buffer;
+        const nGain = this.ctx.createGain();
+        nGain.gain.setValueAtTime(0.5, t);
+        nGain.gain.exponentialRampToValueAtTime(0.01, t + 2);
+        noise.connect(nGain);
+        nGain.connect(this.ctx.destination);
+        noise.start(t);
+    },
+    playAmbient() {
+        if (!this.ctx) return;
+        const t = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.value = 60;
+        gain.gain.value = 0.03;
+        osc.start(t);
+
+        const osc2 = this.ctx.createOscillator();
+        const gain2 = this.ctx.createGain();
+        osc2.connect(gain2);
+        gain2.connect(this.ctx.destination);
+        osc2.type = 'triangle';
+        osc2.frequency.value = 40;
+        gain2.gain.value = 0.05;
+        osc2.start(t);
+    }
+};
+
+// ==================== GAME ENGINE ====================
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const noiseCanvas = document.getElementById('noiseCanvas');
+const noiseCtx = noiseCanvas.getContext('2d');
+
+const darkCanvas = document.createElement('canvas');
+let darkCtx = null;
+
+let W, H;
+function resize() {
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+    noiseCanvas.width = W;
+    noiseCanvas.height = H;
+    if (darkCanvas.width !== W || darkCanvas.height !== H) {
+        darkCanvas.width = W;
+        darkCanvas.height = H;
+        darkCtx = darkCanvas.getContext('2d');
+    }
+}
+window.addEventListener('resize', resize);
+resize();
+
+const TILE = 60;
+const MAP_W = 30;
+const MAP_H = 24;
+let map = [];
+let items = [];
+let antiMobbingItem = null;
+let exitPos = {x: 0, y: 0};
+
+function generateMap() {
+    map = [];
+    items = [];
+    for (let y = 0; y < MAP_H; y++) {
+        map[y] = [];
+        for (let x = 0; x < MAP_W; x++) {
+            map[y][x] = 0;
+        }
+    }
+    for (let x = 0; x < MAP_W; x++) { map[0][x] = 1; map[MAP_H-1][x] = 1; }
+    for (let y = 0; y < MAP_H; y++) { map[y][0] = 1; map[y][MAP_W-1] = 1; }
+
+    const walls = [
+        [5,5,8,1], [14,3,1,6], [20,5,6,1], [8,10,10,1], [22,10,1,8],
+        [3,14,8,1], [12,16,1,6], [18,14,8,1], [25,18,1,4], [5,20,10,1],
+        [10,2,1,4], [2,8,4,1], [26,2,1,6], [16,8,1,4], [8,18,1,4]
+    ];
+    walls.forEach(w => {
+        for (let y = w[1]; y < w[1]+w[3]; y++)
+            for (let x = w[0]; x < w[0]+w[2]; x++)
+                if (y < MAP_H && x < MAP_W) map[y][x] = 1;
+    });
+
+    const itemSpots = [
+        [2,2], [28,2], [2,22], [15,5], [25,15], [5,12], [20,20], [10,18]
+    ];
+    const itemNames = ['Token RDP', 'Certyfikat', 'Hasło Root', 'Klucz SSH', 'Backup RDP', 'VPN Config', 'Session Key', '2FA Token'];
+    itemSpots.forEach((spot, i) => {
+        items.push({x: spot[0]*TILE + TILE/2, y: spot[1]*TILE + TILE/2, collected: false, name: itemNames[i]});
+    });
+
+    antiMobbingItem = {
+        x: 15*TILE + TILE/2,
+        y: 12*TILE + TILE/2,
+        collected: false,
+        name: 'SZKOLENIE ANTY-MOBINGOWE'
+    };
+
+    exitPos = {x: 28*TILE + TILE/2, y: 22*TILE + TILE/2};
+}
+
+const player = {
+    x: 2*TILE + TILE/2,
+    y: 2*TILE + TILE/2,
+    radius: 12,
+    speed: 2.5,
+    sprintSpeed: 4.5,
+    angle: 0,
+    keys: {}
+};
+
+const boss = {
+    x: 28*TILE + TILE/2,
+    y: 3*TILE + TILE/2,
+    radius: 16,
+    speed: 1.2,
+    baseSpeed: 1.2,
+    visible: false,
+    lastSeen: {x: 0, y: 0},
+    stuckTimer: 0,
+    lastPos: {x: 0, y: 0}
+};
+
+let gameState = 'menu';
+let collected = 0;
+let totalItems = 8;
+let time = 0;
+let bossAggro = 0;
+let lastStep = 0;
+let mouseX = W/2, mouseY = H/2;
+let nextHeartbeat = 0;
+let antiMobbingActive = false;
+
+window.addEventListener('mousemove', e => {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+});
+
+window.addEventListener('keydown', e => {
+    player.keys[e.key.toLowerCase()] = true;
+    if (['arrowup','arrowdown','arrowleft','arrowright'].includes(e.key.toLowerCase()))
+        player.keys[e.key.toLowerCase()] = true;
+});
+window.addEventListener('keyup', e => {
+    player.keys[e.key.toLowerCase()] = false;
+    if (['arrowup','arrowdown','arrowleft','arrowright'].includes(e.key.toLowerCase()))
+        player.keys[e.key.toLowerCase()] = false;
+});
+
+function isWall(x, y) {
+    const tx = Math.floor(x / TILE);
+    const ty = Math.floor(y / TILE);
+    if (tx < 0 || tx >= MAP_W || ty < 0 || ty >= MAP_H) return true;
+    return map[ty][tx] === 1;
+}
+
+function canMove(x, y, r) {
+    const pts = [
+        [x-r, y-r], [x+r, y-r], [x+r, y+r], [x-r, y+r],
+        [x, y-r], [x, y+r], [x-r, y], [x+r, y]
+    ];
+    return pts.every(p => !isWall(p[0], p[1]));
+}
+
+function dist(a, b) {
+    return Math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2);
+}
+
+const bossLines = [
+    "ODDAJ MI RDP!",
+    "W TEJ FIRME PRACUJE SIĘ NA MIEJSCU!",
+    "ZAMYKAM CI PORT 3389!",
+    "TWÓJ TERMINAL SERVER JUŻ NIE ŻYJE!",
+    "PRZEJMĘ TWÓJ PULPIT ZDALNY!",
+    "ŻADNEGO HOME OFFICE!",
+    "KARTON CZEKA!",
+    "TWOJE RDP PRZECHODZI NA MNIE!",
+    "ODDAJ RDP - I TAK CIĘ ZNAJDĘ!"
+];
+let lastDialogueTime = 0;
+let currentDialogue = "";
+
+function update() {
+    if (gameState !== 'playing') return;
+    time++;
+
+    const camX = player.x - W/2;
+    const camY = player.y - H/2;
+    const worldMouseX = mouseX + camX;
+    const worldMouseY = mouseY + camY;
+    player.angle = Math.atan2(worldMouseY - player.y, worldMouseX - player.x);
+
+    let dx = 0, dy = 0;
+    const sprint = player.keys[' '] || player.keys['shift'];
+    const spd = sprint ? player.sprintSpeed : player.speed;
+
+    if (player.keys['w'] || player.keys['arrowup']) dy -= 1;
+    if (player.keys['s'] || player.keys['arrowdown']) dy += 1;
+    if (player.keys['a'] || player.keys['arrowleft']) dx -= 1;
+    if (player.keys['d'] || player.keys['arrowright']) dx += 1;
+
+    if (dx !== 0 || dy !== 0) {
+        const len = Math.sqrt(dx*dx + dy*dy);
+        dx = (dx/len) * spd;
+        dy = (dy/len) * spd;
+
+        if (time - lastStep > (sprint ? 15 : 25)) {
+            AudioEngine.playStep();
+            lastStep = time;
+        }
+    }
+
+    const nx = player.x + dx;
+    const ny = player.y + dy;
+    if (canMove(nx, player.y, player.radius)) player.x = nx;
+    if (canMove(player.x, ny, player.radius)) player.y = ny;
+
+    items.forEach(item => {
+        if (!item.collected && dist(player, item) < 30) {
+            item.collected = true;
+            collected++;
+            AudioEngine.playCollect();
+            document.getElementById('itemsCount').textContent = collected;
+            boss.speed = boss.baseSpeed + (collected * 0.25);
+        }
+    });
+
+    if (antiMobbingItem && !antiMobbingItem.collected && dist(player, antiMobbingItem) < 30) {
+        antiMobbingItem.collected = true;
+        antiMobbingActive = true;
+        AudioEngine.playAntiMobbingSound();
+        triggerAntiMobbingWin();
+        return;
+    }
+
+    if (collected >= totalItems && dist(player, exitPos) < 40) {
+        gameState = 'won';
+        document.getElementById('winScreen').style.display = 'flex';
+        return;
+    }
+
+    const d = dist(player, boss);
+    const canSee = !lineOfSightBlocked(boss, player);
+
+    if (canSee) {
+        boss.lastSeen.x = player.x;
+        boss.lastSeen.y = player.y;
+        bossAggro = Math.min(bossAggro + 0.02, 1);
+    } else {
+        bossAggro = Math.max(bossAggro - 0.005, 0);
+    }
+
+    let targetX = boss.lastSeen.x;
+    let targetY = boss.lastSeen.y;
+
+    if (bossAggro > 0.1 || canSee) {
+        const angle = Math.atan2(targetY - boss.y, targetX - boss.x);
+        const bx = Math.cos(angle) * boss.speed;
+        const by = Math.sin(angle) * boss.speed;
+
+        const canMoveX = canMove(boss.x + bx, boss.y, boss.radius);
+        const canMoveY = canMove(boss.x, boss.y + by, boss.radius);
+
+        if (canMoveX) boss.x += bx;
+        if (canMoveY) boss.y += by;
+
+        if (!canMoveX && !canMoveY) {
+            boss.stuckTimer++;
+            if (boss.stuckTimer > 30) {
+                const randAngle = Math.random() * Math.PI * 2;
+                const rx = Math.cos(randAngle) * boss.speed * 2;
+                const ry = Math.sin(randAngle) * boss.speed * 2;
+                if (canMove(boss.x + rx, boss.y, boss.radius)) boss.x += rx;
+                if (canMove(boss.x, boss.y + ry, boss.radius)) boss.y += ry;
+                boss.stuckTimer = 0;
+            }
+        } else {
+            boss.stuckTimer = 0;
+        }
+    } else {
+        const wanderAngle = time * 0.01;
+        const wx = Math.cos(wanderAngle) * 0.5;
+        const wy = Math.sin(wanderAngle) * 0.5;
+        if (canMove(boss.x + wx, boss.y, boss.radius)) boss.x += wx;
+        if (canMove(boss.x, boss.y + wy, boss.radius)) boss.y += wy;
+    }
+
+    if (d < player.radius + boss.radius) {
+        triggerDeath();
+    }
+
+    if (d < 500) {
+        const intensity = 1 - (d / 500);
+        if (time >= nextHeartbeat) {
+            const gap = AudioEngine.playHeartbeat(intensity, time);
+            nextHeartbeat = time + Math.floor(gap * 60);
+        }
+    }
+
+    const dialogueEl = document.getElementById('bossDialogue');
+    if (d < 250 && canSee && time - lastDialogueTime > 180) {
+        currentDialogue = bossLines[Math.floor(Math.random() * bossLines.length)];
+        dialogueEl.textContent = currentDialogue;
+        dialogueEl.style.display = 'block';
+        lastDialogueTime = time;
+    }
+    if (time - lastDialogueTime > 120) {
+        dialogueEl.style.display = 'none';
+    }
+
+    const staticOverlay = document.getElementById('staticOverlay');
+    if (d < 200) {
+        staticOverlay.style.opacity = (1 - d/200) * 0.6;
+    } else {
+        staticOverlay.style.opacity = 0;
+    }
+}
+
+function lineOfSightBlocked(a, b) {
+    const steps = Math.floor(dist(a, b) / 5);
+    if (steps === 0) return false;
+    for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const x = a.x + (b.x - a.x) * t;
+        const y = a.y + (b.y - a.y) * t;
+        if (isWall(x, y)) return true;
+    }
+    return false;
+}
+
+function triggerDeath() {
+    gameState = 'dead';
+    AudioEngine.playJumpscare();
+
+    const jumpscareDiv = document.getElementById('jumpscare');
+    const jCanvas = document.getElementById('jumpscareCanvas');
+    const jCtx = jCanvas.getContext('2d');
+    jCanvas.width = W;
+    jCanvas.height = H;
+    jumpscareDiv.style.display = 'flex';
+
+    let frame = 0;
+    function animateJumpscare() {
+        frame++;
+        jCtx.fillStyle = '#000';
+        jCtx.fillRect(0, 0, W, H);
+
+        if (frame < 10) {
+            jCtx.fillStyle = `rgba(255,0,0,${0.5 + Math.random()*0.5})`;
+            jCtx.fillRect(0, 0, W, H);
+        }
+
+        const scale = Math.min(1, frame / 30) * 3;
+        const cx = W/2, cy = H/2;
+        jCtx.save();
+        jCtx.translate(cx, cy);
+        jCtx.scale(scale, scale);
+
+        jCtx.fillStyle = '#8B4513';
+        jCtx.beginPath();
+        jCtx.arc(0, -20, 50, 0, Math.PI*2);
+        jCtx.fill();
+
+        jCtx.fillStyle = '#fff';
+        jCtx.beginPath();
+        jCtx.arc(-20, -30, 15, 0, Math.PI*2);
+        jCtx.arc(20, -30, 15, 0, Math.PI*2);
+        jCtx.fill();
+        jCtx.fillStyle = '#000';
+        jCtx.beginPath();
+        jCtx.arc(-20, -30, 5, 0, Math.PI*2);
+        jCtx.arc(20, -30, 5, 0, Math.PI*2);
+        jCtx.fill();
+
+        jCtx.strokeStyle = '#000';
+        jCtx.lineWidth = 3;
+        jCtx.beginPath();
+        jCtx.moveTo(-30, 10);
+        jCtx.quadraticCurveTo(0, 40, 30, 5);
+        jCtx.stroke();
+
+        jCtx.fillStyle = '#A0522D';
+        jCtx.fillRect(-80, 30, 160, 80);
+        jCtx.strokeStyle = '#5c2e1a';
+        jCtx.lineWidth = 2;
+        jCtx.beginPath();
+        jCtx.moveTo(-40, 40); jCtx.lineTo(-40, 100);
+        jCtx.moveTo(40, 40); jCtx.lineTo(40, 100);
+        jCtx.moveTo(0, 50); jCtx.lineTo(0, 90);
+        jCtx.stroke();
+
+        jCtx.fillStyle = '#8B4513';
+        jCtx.fillRect(-60, 60, 120, 80);
+        jCtx.strokeStyle = '#5c2e1a';
+        jCtx.lineWidth = 2;
+        jCtx.strokeRect(-60, 60, 120, 80);
+
+        jCtx.strokeStyle = '#ff0000';
+        jCtx.lineWidth = 4;
+        jCtx.beginPath();
+        jCtx.moveTo(-30, 90);
+        jCtx.quadraticCurveTo(-10, 120, 10, 85);
+        jCtx.quadraticCurveTo(20, 110, 30, 95);
+        jCtx.stroke();
+
+        jCtx.fillStyle = '#ff0000';
+        jCtx.font = 'bold 16px Courier New';
+        jCtx.textAlign = 'center';
+        jCtx.fillText('RDP', 0, 75);
+
+        jCtx.restore();
+
+        if (frame > 40) {
+            jCtx.fillStyle = '#ff0000';
+            jCtx.font = 'bold 50px Courier New';
+            jCtx.textAlign = 'center';
+            jCtx.fillText('ZOSTAŁEŚ ZWOLNIONY', cx, H - 120);
+            jCtx.font = 'bold 24px Courier New';
+            jCtx.fillText('Kierownik przejął Twój RDP.', cx, H - 80);
+            jCtx.fillText('Port 3389 zamknięty na zawsze.', cx, H - 50);
+        }
+
+        if (frame < 150) {
+            requestAnimationFrame(animateJumpscare);
+        } else {
+            jumpscareDiv.style.display = 'none';
+            document.getElementById('gameOverScreen').style.display = 'flex';
+            const texts = [
+                'Kierownik wręczył Ci karton z uśmiechem.<br>"Twój RDP teraz należy do korporacji."<br>Usłyszałeś tylko dźwięk zamykającego się portu 3389.',
+                'Nie zebrałeś wszystkich tokenów RDP.<br>Kierownik zdobył roota na Twoim terminal serverze.<br>Home office? Zapomnij.',
+                '"Proszę zabrać rzeczy osobiste" — padło z ust umięśnionego kierownika.<br>"A RDP? To już moje. Pracujesz tu, albo nigdzie."',
+                'Uśmiech na kartonie był ostatnim co widziałeś.<br>Potem usłyszałeś: <span style="color:#ff0000">"Remote Desktop? Nie dla Ciebie, chuderlawcu."</span>'
+            ];
+            document.getElementById('deathText').innerHTML = texts[Math.floor(Math.random()*texts.length)];
+        }
+    }
+    animateJumpscare();
+}
+
+function triggerAntiMobbingWin() {
+    gameState = 'antiMobbing';
+    AudioEngine.playJumpscare();
+
+    const jumpscareDiv = document.getElementById('antiMobbingJumpscare');
+    const jCanvas = document.getElementById('antiMobbingCanvas');
+    const jCtx = jCanvas.getContext('2d');
+    jCanvas.width = W;
+    jCanvas.height = H;
+    jumpscareDiv.style.display = 'flex';
+
+    AudioEngine.speak("Krystian... nie... to niemożliwe... szkolenie anty mobingowe...", 0.9, 0.3);
+
+    let frame = 0;
+    function animateAntiMobbing() {
+        frame++;
+        jCtx.fillStyle = '#000';
+        jCtx.fillRect(0, 0, W, H);
+
+        if (frame < 10) {
+            jCtx.fillStyle = `rgba(255,0,255,${0.5 + Math.random()*0.5})`;
+            jCtx.fillRect(0, 0, W, H);
+        }
+
+        const scale = Math.min(1, frame / 30) * 2.5;
+        const cx = W/2, cy = H/2;
+        jCtx.save();
+        jCtx.translate(cx, cy);
+        jCtx.scale(scale, scale);
+
+        jCtx.fillStyle = '#4488ff';
+        jCtx.beginPath();
+        jCtx.arc(0, -30, 35, 0, Math.PI*2);
+        jCtx.fill();
+
+        jCtx.strokeStyle = '#000';
+        jCtx.lineWidth = 3;
+        jCtx.beginPath();
+        jCtx.arc(-12, -35, 10, 0, Math.PI*2);
+        jCtx.arc(12, -35, 10, 0, Math.PI*2);
+        jCtx.moveTo(-2, -35); jCtx.lineTo(2, -35);
+        jCtx.stroke();
+
+        jCtx.strokeStyle = '#00ff00';
+        jCtx.lineWidth = 3;
+        jCtx.beginPath();
+        jCtx.moveTo(-15, -15);
+        jCtx.quadraticCurveTo(0, 5, 15, -15);
+        jCtx.stroke();
+
+        jCtx.fillStyle = '#6600ff';
+        jCtx.fillRect(-40, 0, 80, 60);
+
+        jCtx.fillStyle = '#ff00ff';
+        jCtx.beginPath();
+        jCtx.arc(0, 30, 25, 0, Math.PI*2);
+        jCtx.fill();
+        jCtx.strokeStyle = '#fff';
+        jCtx.lineWidth = 2;
+        jCtx.stroke();
+        jCtx.fillStyle = '#fff';
+        jCtx.font = 'bold 8px Courier New';
+        jCtx.textAlign = 'center';
+        jCtx.fillText('ANTI', 0, 26);
+        jCtx.fillText('MOB', 0, 36);
+
+        jCtx.fillStyle = '#8B4513';
+        jCtx.fillRect(50, 20, 50, 40);
+        jCtx.strokeStyle = '#5c2e1a';
+        jCtx.lineWidth = 1;
+        jCtx.strokeRect(50, 20, 50, 40);
+        jCtx.fillStyle = '#ff0000';
+        jCtx.font = 'bold 10px Courier New';
+        jCtx.fillText('RDP', 75, 40);
+
+        jCtx.restore();
+
+        if (frame > 30) {
+            jCtx.fillStyle = '#ff00ff';
+            jCtx.font = 'bold 40px Courier New';
+            jCtx.textAlign = 'center';
+            jCtx.fillText('TY ZROBIŁEŚ MU JUMPSCARE', cx, H - 140);
+            jCtx.fillStyle = '#00ff00';
+            jCtx.font = 'bold 28px Courier New';
+            jCtx.fillText('SZKOLENIE ANTY-MOBINGOWE', cx, H - 100);
+            jCtx.fillStyle = '#fff';
+            jCtx.font = 'bold 20px Courier New';
+            jCtx.fillText('Kierownik nie żyje (korporacyjnie)', cx, H - 60);
+        }
+
+        if (frame < 180) {
+            requestAnimationFrame(animateAntiMobbing);
+        } else {
+            jumpscareDiv.style.display = 'none';
+            document.getElementById('antiMobbingScreen').style.display = 'flex';
+        }
+    }
+    animateAntiMobbing();
+}
+
+let noiseFrame = 0;
+const NOISE_W = 160;
+const NOISE_H = 120;
+const smallNoiseCanvas = document.createElement('canvas');
+smallNoiseCanvas.width = NOISE_W;
+smallNoiseCanvas.height = NOISE_H;
+const smallNoiseCtx = smallNoiseCanvas.getContext('2d');
+
+function draw() {
+    ctx.fillStyle = '#050505';
+    ctx.fillRect(0, 0, W, H);
+
+    if (gameState !== 'playing') return;
+
+    const camX = player.x - W/2;
+    const camY = player.y - H/2;
+
+    ctx.save();
+    ctx.translate(-camX, -camY);
+
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(camX, camY, W, H);
+
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 1;
+    const startTX = Math.floor(camX / TILE) * TILE;
+    const startTY = Math.floor(camY / TILE) * TILE;
+    for (let x = startTX; x < camX + W + TILE; x += TILE) {
+        ctx.beginPath(); ctx.moveTo(x, camY); ctx.lineTo(x, camY + H); ctx.stroke();
+    }
+    for (let y = startTY; y < camY + H + TILE; y += TILE) {
+        ctx.beginPath(); ctx.moveTo(camX, y); ctx.lineTo(camX + W, y); ctx.stroke();
+    }
+
+    ctx.fillStyle = '#2a2a2a';
+    ctx.strokeStyle = '#3a3a3a';
+    ctx.lineWidth = 2;
+    const minTX = Math.max(0, Math.floor(camX / TILE) - 1);
+    const maxTX = Math.min(MAP_W, Math.floor((camX + W) / TILE) + 2);
+    const minTY = Math.max(0, Math.floor(camY / TILE) - 1);
+    const maxTY = Math.min(MAP_H, Math.floor((camY + H) / TILE) + 2);
+
+    for (let y = minTY; y < maxTY; y++) {
+        for (let x = minTX; x < maxTX; x++) {
+            if (map[y][x] === 1) {
+                const wx = x * TILE;
+                const wy = y * TILE;
+                ctx.fillRect(wx, wy, TILE, TILE);
+                ctx.strokeRect(wx, wy, TILE, TILE);
+                ctx.fillStyle = '#333';
+                ctx.fillRect(wx + 5, wy + 5, TILE - 10, TILE - 10);
+                ctx.fillStyle = '#2a2a2a';
+            }
+        }
+    }
+
+    items.forEach(item => {
+        if (item.collected) return;
+        const pulse = Math.sin(time * 0.05) * 3;
+        ctx.fillStyle = '#00ff00';
+        ctx.shadowColor = '#00ff00';
+        ctx.shadowBlur = 15;
+        ctx.beginPath();
+        ctx.arc(item.x, item.y + pulse, 8, 0, Math.PI*2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        ctx.fillStyle = '#88ff88';
+        ctx.font = '10px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText(item.name, item.x, item.y - 15 + pulse);
+    });
+
+    if (antiMobbingItem && !antiMobbingItem.collected) {
+        const pulse = Math.sin(time * 0.08) * 5;
+        ctx.fillStyle = '#ff00ff';
+        ctx.shadowColor = '#ff00ff';
+        ctx.shadowBlur = 25 + pulse;
+        ctx.beginPath();
+        ctx.arc(antiMobbingItem.x, antiMobbingItem.y, 12, 0, Math.PI*2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        ctx.fillStyle = '#ff88ff';
+        ctx.font = 'bold 11px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('★', antiMobbingItem.x, antiMobbingItem.y + 4);
+
+        ctx.fillStyle = '#ff00ff';
+        ctx.font = '9px Courier New';
+        ctx.fillText('ANTI-MOBING', antiMobbingItem.x, antiMobbingItem.y - 20);
+    }
+
+    if (collected >= totalItems) {
+        const pulse = Math.sin(time * 0.08) * 5;
+        ctx.fillStyle = '#00ff00';
+        ctx.shadowColor = '#00ff00';
+        ctx.shadowBlur = 20;
+        ctx.beginPath();
+        ctx.arc(exitPos.x, exitPos.y, 15 + pulse, 0, Math.PI*2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#0f0';
+        ctx.font = 'bold 12px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('WYJŚCIE', exitPos.x, exitPos.y - 25);
+    }
+
+    const d = dist(player, boss);
+    const canSeeBoss = !lineOfSightBlocked(player, boss);
+
+    if (canSeeBoss || d < 150) {
+        const bossAlpha = canSeeBoss ? 1 : 0.3;
+        ctx.save();
+        ctx.globalAlpha = bossAlpha;
+
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.beginPath();
+        ctx.ellipse(boss.x, boss.y + 20, 20, 8, 0, 0, Math.PI*2);
+        ctx.fill();
+
+        ctx.fillStyle = '#8B4513';
+        ctx.beginPath();
+        ctx.arc(boss.x, boss.y - 10, 18, 0, Math.PI*2);
+        ctx.fill();
+
+        ctx.fillStyle = '#A0522D';
+        ctx.fillRect(boss.x - 25, boss.y + 5, 50, 35);
+
+        ctx.strokeStyle = '#5c2e1a';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(boss.x - 10, boss.y + 10); ctx.lineTo(boss.x - 10, boss.y + 35);
+        ctx.moveTo(boss.x + 10, boss.y + 10); ctx.lineTo(boss.x + 10, boss.y + 35);
+        ctx.stroke();
+
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(boss.x - 7, boss.y - 15, 5, 0, Math.PI*2);
+        ctx.arc(boss.x + 7, boss.y - 15, 5, 0, Math.PI*2);
+        ctx.fill();
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(boss.x - 7, boss.y - 15, 2, 0, Math.PI*2);
+        ctx.arc(boss.x + 7, boss.y - 15, 2, 0, Math.PI*2);
+        ctx.fill();
+
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(boss.x - 10, boss.y - 5);
+        ctx.quadraticCurveTo(boss.x, boss.y + 5, boss.x + 10, boss.y - 5);
+        ctx.stroke();
+
+        ctx.fillStyle = '#8B4513';
+        ctx.fillRect(boss.x - 20, boss.y + 20, 40, 30);
+        ctx.strokeStyle = '#5c2e1a';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(boss.x - 20, boss.y + 20, 40, 30);
+
+        ctx.strokeStyle = '#ff0000';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(boss.x - 12, boss.y + 32);
+        ctx.quadraticCurveTo(boss.x - 5, boss.y + 42, boss.x + 2, boss.y + 30);
+        ctx.quadraticCurveTo(boss.x + 8, boss.y + 40, boss.x + 12, boss.y + 33);
+        ctx.stroke();
+
+        ctx.fillStyle = '#ff0000';
+        ctx.font = 'bold 8px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('RDP', boss.x, boss.y + 28);
+
+        ctx.restore();
+    }
+
+    ctx.fillStyle = '#4488ff';
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.radius, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = '#66aaff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(player.x, player.y);
+    ctx.lineTo(player.x + Math.cos(player.angle)*20, player.y + Math.sin(player.angle)*20);
+    ctx.stroke();
+
+    ctx.restore();
+
+    if (darkCtx) {
+        darkCtx.fillStyle = 'rgba(0, 0, 0, 0.96)';
+        darkCtx.fillRect(0, 0, W, H);
+
+        darkCtx.globalCompositeOperation = 'destination-out';
+
+        const fov = Math.PI / 3.5;
+        const lightLen = 280;
+
+        const lightGrad = darkCtx.createRadialGradient(
+            W/2, H/2, 10,
+            W/2, H/2, lightLen
+        );
+        lightGrad.addColorStop(0, 'rgba(0,0,0,1)');
+        lightGrad.addColorStop(0.4, 'rgba(0,0,0,0.7)');
+        lightGrad.addColorStop(1, 'rgba(0,0,0,0)');
+
+        darkCtx.fillStyle = lightGrad;
+        darkCtx.beginPath();
+        darkCtx.moveTo(W/2, H/2);
+        darkCtx.arc(W/2, H/2, lightLen, player.angle - fov/2, player.angle + fov/2);
+        darkCtx.closePath();
+        darkCtx.fill();
+
+        const peripheral = darkCtx.createRadialGradient(W/2, H/2, 5, W/2, H/2, 60);
+        peripheral.addColorStop(0, 'rgba(0,0,0,0.6)');
+        peripheral.addColorStop(1, 'rgba(0,0,0,0)');
+        darkCtx.fillStyle = peripheral;
+        darkCtx.beginPath();
+        darkCtx.arc(W/2, H/2, 60, 0, Math.PI*2);
+        darkCtx.fill();
+
+        darkCtx.globalCompositeOperation = 'source-over';
+
+        ctx.drawImage(darkCanvas, 0, 0);
+    }
+
+    if (d < 400) {
+        const vignette = ctx.createRadialGradient(W/2, H/2, 50, W/2, H/2, W/2);
+        const intensity = (1 - d/400) * 0.5;
+        vignette.addColorStop(0, `rgba(139,0,0,0)`);
+        vignette.addColorStop(1, `rgba(139,0,0,${intensity})`);
+        ctx.fillStyle = vignette;
+        ctx.fillRect(0, 0, W, H);
+    }
+
+    if (d < 250) {
+        noiseFrame++;
+        const noiseAmount = (1 - d/250);
+        if (noiseFrame % 3 === 0) {
+            const imgData = smallNoiseCtx.createImageData(NOISE_W, NOISE_H);
+            for (let i = 0; i < imgData.data.length; i += 4) {
+                const val = Math.random() * 255;
+                imgData.data[i] = val;
+                imgData.data[i+1] = val;
+                imgData.data[i+2] = val;
+                imgData.data[i+3] = noiseAmount * 200;
+            }
+            smallNoiseCtx.putImageData(imgData, 0, 0);
+        }
+        noiseCtx.clearRect(0, 0, W, H);
+        noiseCtx.drawImage(smallNoiseCanvas, 0, 0, W, H);
+    } else {
+        noiseCtx.clearRect(0, 0, W, H);
+    }
+
+    if (d < 150) {
+        ctx.fillStyle = `rgba(255,0,0,${0.5 + Math.sin(time*0.1)*0.5})`;
+        ctx.font = 'bold 24px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('!!! KIEROWNIK CHCE TWOJEGO RDP !!!', W/2, H - 50);
+    }
+}
+
+function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+function startGame() {
+    AudioEngine.init();
+    AudioEngine.playAmbient();
+
+    setTimeout(() => {
+        AudioEngine.speak("Krystian, oddaj RDP'a!", 0.75, 0.4);
+    }, 500);
+
+    document.getElementById('startScreen').style.display = 'none';
+    document.getElementById('hud').style.display = 'block';
+    document.getElementById('rdpBar').style.display = 'block';
+    document.getElementById('antiMobbingHint').style.display = 'block';
+    generateMap();
+    gameState = 'playing';
+}
+
+gameLoop();
+</script>
+</body>
+</html>
